@@ -16,29 +16,37 @@ from neomodel import (
 )
 
 
-class Country(StructuredNode):
-    code = StringProperty(unique_index=True, required=True)
-
-    # traverse incoming IS_FROM relation, inflate to Person objects
-    inhabitants = RelationshipFrom('Person', 'IS_FROM')
-
-
 class Person(StructuredNode):
     name = StringProperty(unique_index=True)
     age = IntegerProperty(index=True, default=0)
 
     # traverse outgoing IS_FROM relations, inflate to Country objects
-    country = RelationshipTo(Country, 'IS_FROM')
+    country = RelationshipTo('server.Country', 'IS_FROM')
+
+
+class Country(StructuredNode):
+    code = StringProperty(unique_index=True, required=True)
+
+    # traverse incoming IS_FROM relation, inflate to Person objects
+    inhabitants = RelationshipFrom(Person, 'IS_FROM')
+
+    @classmethod
+    def get_inhabitants(cls):
+        country_category = Country.category()
+        results, columns = country_category.cypher(
+            "MATCH b-[:IS_FROM]->(a) RETURN a, count(b)"
+        )
+        return [(cls.inflate(row[0]), int(row[1])) for row in results]
 
 
 class GetHandler(tornado.web.RequestHandler):
     def get(self):
+        country_inhabitants = Country.get_inhabitants()
         countries = []
-        country_category = Country.category()
-        for c in country_category.instance.all():
+        for c, inhabitants in country_inhabitants:
             countries.append(dict(
                 code=c.code,
-                inhabitants=len(c.inhabitants)
+                inhabitants=inhabitants
             ))
         self.write(dumps(countries))
 
@@ -88,6 +96,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
